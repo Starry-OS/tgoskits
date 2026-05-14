@@ -9,7 +9,7 @@ use linux_raw_sys::general::*;
 use starry_vm::{vm_load, vm_write_slice};
 
 use crate::{
-    file::get_file_like,
+    file::{get_file_like, ion::IonBufferFile},
     mm::{Backend, SharedPages},
     pseudofs::{Device, DeviceMmap},
     task::AsThread,
@@ -126,7 +126,15 @@ pub fn sys_mmap(
     if type_bits != MAP_PRIVATE && type_bits != MAP_SHARED {
         return Err(AxError::InvalidInput);
     }
-    if map_flags.contains(MmapFlags::ANONYMOUS) != (fd <= 0) {
+    let is_ion_buffer = if fd > 0 {
+        get_file_like(fd)
+            .map(|f| f.downcast_arc::<IonBufferFile>().is_ok())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    if !is_ion_buffer && (map_flags.contains(MmapFlags::ANONYMOUS) != (fd <= 0)) {
         return Err(AxError::InvalidInput);
     }
     if fd <= 0 && offset != 0 {
@@ -179,7 +187,44 @@ pub fn sys_mmap(
     };
 
     let file = if fd > 0 {
-        Some(get_file_like(fd)?)
+        let file_like = get_file_like(fd)?;
+        if let Ok(ion_file) = file_like.clone().downcast_arc::<IonBufferFile>() {
+            let range = ion_file.phys_range();
+            let map_length = length.max(range.size()).align_up(page_size);
+
+            info!(
+                "Ion buffer mmap: phys_addr=0x{:x}, buffer_size={}, requested_length={}, \
+                 map_length={}",
+                range.start.as_usize(),
+                range.size(),
+                length,
+                map_length
+            );
+
+            if map_length == 0 {
+                warn!("Ion buffer mmap: map_length is 0");
+                return Err(AxError::InvalidInput);
+            }
+
+            let backend =
+                Backend::new_linear(start.as_usize() as isize - range.start.as_usize() as isize);
+            let populate = map_flags.contains(MmapFlags::POPULATE);
+            aspace.map(
+                start,
+                map_length,
+                permission_flags.into(),
+                populate,
+                backend,
+            )?;
+
+            info!(
+                "Ion buffer mmap success: vaddr=0x{:x}, length={}",
+                start.as_usize(),
+                map_length
+            );
+            return Ok(start.as_usize() as _);
+        }
+        Some(file_like)
     } else {
         None
     };
@@ -233,7 +278,7 @@ pub fn sys_mmap(
                             .downcast::<Device>()
                             .map_err(|_| AxError::NoSuchDevice)?;
 
-                        match device.mmap(offset as u64) {
+                        match device.mmap(offset as u64, length) {
                             DeviceMmap::None => {
                                 return Err(AxError::NoSuchDevice);
                             }

@@ -45,7 +45,7 @@ pub trait DeviceOps: Send + Sync {
     }
 
     /// Returns the memory mapping behavior of the device for the given offset.
-    fn mmap(&self, _offset: u64) -> DeviceMmap {
+    fn mmap(&self, offset: u64, length: usize) -> DeviceMmap {
         DeviceMmap::None
     }
 
@@ -85,8 +85,8 @@ impl Device {
     }
 
     /// Returns the memory mapping behavior of the device for the given offset.
-    pub fn mmap(&self, offset: u64) -> DeviceMmap {
-        self.ops.mmap(offset)
+    pub fn mmap(&self, offset: u64, length: usize) -> DeviceMmap {
+        self.ops.mmap(offset, length)
     }
 }
 
