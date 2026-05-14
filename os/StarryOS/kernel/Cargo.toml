@@ -17,6 +17,7 @@ license.workspace = true
 dev-log = []
 input = ["dep:ax-input", "ax-feat/input"]
 memtrack = ["ax-feat/dwarf", "ax-alloc/tracking", "dep:gimli"]
+sg2002 = ["dep:ax-dma", "dep:tpu-sg2002"]
 rknpu = ["dep:axplat-dyn", "axplat-dyn/rknpu"]
 vsock = ["ax-feat/vsock"]
 
@@ -48,6 +49,7 @@ ax-hal.workspace = true
 ax-input = { workspace = true, optional = true }
 ax-log.workspace = true
 ax-mm.workspace = true
+ax-dma = { workspace = true, optional = true }
 axnet = { path = "../../arceos/modules/axnet-ng", package = "ax-net-ng" }
 axplat-dyn = { workspace = true, optional = true }
 ax-runtime.workspace = true
