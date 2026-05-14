@@ -114,6 +114,7 @@ x86 = "0.52"
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 riscv = "0.16"
+tpu-sg2002 = { git = "https://github.com/elliott10/tpu_sg2002.git", rev = "26d12321", optional = true }
 
 [target.'cfg(not(any(target_arch = "aarch64", target_arch = "loongarch64")))'.dependencies]
 ax-page-table-multiarch = { workspace = true, features = ["copy-from"] }

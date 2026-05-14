@@ -20,6 +20,8 @@ mod rtc;
 pub mod tty;
 
 #[cfg(feature = "sg2002")]
+mod cvi_tpu;
+#[cfg(feature = "sg2002")]
 pub mod ion;
 
 use alloc::{format, sync::Arc};
@@ -37,6 +39,8 @@ use crate::pseudofs::{Device, DeviceOps, DirMaker, DirMapping, SimpleDir, Simple
 
 #[cfg(feature = "sg2002")]
 pub static ION_DEVICE: Once<Arc<ion::IonDevice>> = Once::new();
+#[cfg(feature = "sg2002")]
+static TPU_DEVICE: Once<Arc<cvi_tpu::CviTpuDevice>> = Once::new();
 
 const RANDOM_SEED: &[u8; 32] = b"0123456789abcdef0123456789abcdef";
 
@@ -236,6 +240,18 @@ fn builder(fs: Arc<SimpleFs>) -> DirMaker {
                 NodeType::CharacterDevice,
                 DeviceId::new(10, 56),
                 ion_device,
+            ),
+        );
+        let tpu_device = Arc::new(cvi_tpu::CviTpuDevice::new());
+        tpu_device.init();
+        TPU_DEVICE.call_once(|| tpu_device.clone());
+        root.add(
+            "cvi-tpu0",
+            Device::new(
+                fs.clone(),
+                NodeType::CharacterDevice,
+                DeviceId::new(120, 0),
+                tpu_device,
             ),
         );
     }
