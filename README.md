@@ -106,6 +106,60 @@ Walker-to-app-intent conversion, app Gene / Charge generation,
 Chamber / Pouch / Reflex / Soil flow, Skin projection, and demo-pipeline
 surfaces.
 
+### System Architecture Diagram
+
+![Asking Star system architecture](docs/static/images/asking-star-system-architecture.png)
+
+The diagram shows the Asking Star five-layer architecture used by this branch:
+
+```text
+Layer 1: OuterKernel / application intent layer
+  Desktop-Wanderer, LeRobot, RKNN demo, shell, AI demo, robot task, SkinUI,
+  and Walker input.
+
+Layer 2: Sky / DigitalSet fact layer
+  DigitalSetRecord, DigitalSetFragment, RefRecord, PrimordialDigitalSet, and
+  Sky-facing runtime facts.
+
+Layer 3: Asking Star Core / middle core
+  StarRuntime, Gene, Charge, DigitalCell, Sun admission, OrganRuntime, and the
+  semantic interpretation path.
+
+Layer 4: Soil / vessel / chamber runtime layer
+  SoilRuntime, VesselBus, AlgebraSkeleton, TimelineJoint, MultiChamber,
+  ChamberRuntime, ChamberPouchView, SkinUIProjection, and ReflexGeneBank.
+
+Layer 5: InnerKernel / OS and hardware boundary
+  StarryOS kernel, scheduler, memory, file system, driver interfaces, RK3588,
+  Orange Pi 5 Plus, NPU, UART, USB, and camera devices.
+```
+
+`OuterKernel`, `Asking Star Core`, and `InnerKernel` are engineering metaphors
+inside the Asking Star design. They do not rename or replace the traditional OS
+kernel. `OuterKernel` is the application-facing demonstration and intent layer.
+`Asking Star Core` is the semantic middle core that interprets DigitalSet facts
+into Gene / Charge / DigitalCell runtime units and passes admitted work through
+Sun / Organ. `InnerKernel` is the real OS / ABI / driver / hardware boundary,
+which this branch reaches only through Soil and adapter surfaces.
+
+The skeleton, vessel, chamber, and pouch concepts keep the middle runtime from
+collapsing into direct OS calls:
+
+- `AlgebraSkeleton` and `TimelineJoint` provide the main time-axis skeleton and
+  horizontal ref-mounting points.
+- `VesselBus` is the Star-layer information vessel path for packets, routes,
+  gates, taps, recovery, and block records.
+- `MultiChamber` and `ChamberRuntime` select execution environments such as
+  Mock, Replay, StableStarry, Linux external service, RKNN runtime, and StarryOS
+  dry-run.
+- `ChamberPouchView` is the care and observation layer. It records chamber
+  output, health, fallback, trace-facing data, adapter mode, and reflex
+  candidates without bypassing Soil.
+- `Starry Sentinel` remains a host-side verification layer for artifact checks,
+  U-Boot probes, serial markers, JSONL event streams, and Markdown reports. It
+  observes and verifies evidence, but it is not treated as BoardReal execution
+  by itself.
+
 ### Architecture Overview
 
 Asking Star uses a layered structure from application intent to runtime
