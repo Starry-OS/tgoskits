@@ -11,6 +11,185 @@
 </div>
 
 English | [中文](README_CN.md)
+## Asking Star Scheme-B Runtime Components
+
+### Project Background
+
+This fork carries an Asking Star Scheme-B componentization branch maintained by
+the Yi Astra team from Tianjin University. The team's work focuses on StarryOS,
+RK3588 edge-intelligence platforms, AI inference adaptation, and embodied
+intelligence application migration.
+
+During this work, we organized Asking Star as a semantic runtime design around
+StarryOS boot-chain validation, AI inference backend adaptation, runtime state
+recording, and test evidence management. Asking Star is not intended to replace
+the StarryOS kernel, nor to reimplement a full operating system. It adds a
+semantic runtime layer above the OS boundary to organize application intent, AI
+inference requests, system-boundary calls, runtime state, and validation
+evidence.
+
+Following the suggestion to share this design and implementation direction with
+the TGOSKits / StarryOS / ArceOS / AxVisor upstream communities, this branch
+keeps the integration small, componentized, and reviewable. It is an
+exploratory runtime component set and adapter-boundary proposal, submitted for
+open discussion and incremental review rather than as a replacement for the
+existing upstream architecture.
+
+### Repository Positioning
+
+This branch adds Asking Star Scheme-B as self-contained runtime and Soil
+adapter components:
+
+```text
+components/asking-star-runtime
+components/asking-star-soil
+tools/import_asking_star_scheme_b.sh
+tools/run_asking_star_scheme_b_tests.sh
+docs/docs/asking-star/scheme-b-overview.md
+```
+
+`asking-star-runtime` contains the semantic runtime side: `DigitalSet`, `Gene /
+Charge`, `DigitalCell`, `StarRuntime`, `Sun / Organ`, Walker-related surfaces,
+and trace records.
+
+`asking-star-soil` contains the OS/ABI adapter boundary: `KernelRequest`,
+`KernelResult`, `ReturnRebuilder`, Mock / LinuxUser / StarryOS adapter surfaces,
+QEMU dry-run records, and BoardReal guard records.
+
+The tools provide reproducible import and smoke-test entry points for a TGOSKits
+checkout.
+
+### Architecture Overview
+
+Asking Star uses a layered structure from application intent to runtime
+interpretation and OS-boundary adaptation. Application input can come from a
+shell, tool, AI demo, external service, replay stream, or future robot task
+entry. Runtime state is recorded through `DigitalSet` records. The Soil layer
+then lowers semantic requests into OS/ABI requests. Backends can be Mock,
+Replay, Linux user, QEMU dry-run, StarryOS adapter, or a separately evidenced
+BoardReal path.
+
+The intended flow is:
+
+```text
+App / Intent
+  -> DigitalSetRecord / DigitalSetFragment
+  -> StarRuntime / Gene / Charge / DigitalCell
+  -> Sun admission
+  -> OrganRuntime
+  -> SoilRuntime
+  -> KernelAdapter
+  -> KernelResult
+  -> ReturnRebuilder
+  -> TraceEventRecord
+```
+
+Asking Star Runtime does not replace StarryOS kernel scheduling. It adds a task
+organization, capability selection, and state-feedback layer above the OS. The
+current Scheme-B design uses `DigitalSet` as the fact carrier, `Gene / Charge`
+as semantic representations, `DigitalCell` as the minimum runtime unit, `Sun /
+Organ` as admission and execution organization, `SoilRuntime` as the OS/ABI
+boundary, and trace records as the return path for validation and replay.
+
+### Problems Addressed
+
+Edge-intelligence systems often couple application logic, AI inference, OS
+services, drivers, device nodes, syscalls, ioctls, and hardware behavior. This
+works in a mature Linux environment, but it becomes difficult to migrate or
+compare behavior across StarryOS, QEMU, Mock, Replay, Linux user, and real board
+validation.
+
+Asking Star is intended to make these boundaries explicit:
+
+1. Reduce coupling between application intent and OS/ABI details.
+2. Keep AI inference results, `KernelRequest`, `KernelResult`, trace, and logs
+   in a unified record path.
+3. Separate Mock, Replay, Linux baseline, QEMU dry-run, StarryOS adapter, and
+   BoardReal evidence.
+4. Keep upper-level task organization separate from lower-level driver calls.
+5. Provide a fact carrier that supports replay, audit, and comparison.
+6. Keep local validation and real board validation visibly separate.
+
+### Core Design Notes
+
+`DigitalSet` is the unified fact carrier. Application intent, task dependencies,
+AI inference results, kernel requests, kernel results, trace events, and Soil
+return values should enter the runtime as records before being interpreted by
+`StarRuntime`.
+
+`StarRuntime` is the semantic interpretation center. It does not directly call
+syscalls, ioctls, mmap, device drivers, or StarryOS internals. It answers what a
+task means and how it should become a runtime unit.
+
+`Gene`, `Charge`, and `DigitalCell` are semantic runtime forms. `Gene` models a
+compressed or indexed experience. `Charge` models an executable runtime intent.
+`DigitalCell` combines them into the minimum semantic runtime unit.
+
+`Sun` and `Organ` separate admission from execution organization. `Sun` handles
+logical rhythm, budget, permission, and admission decisions. `OrganRuntime`
+organizes admitted `DigitalCell` execution without bypassing Soil.
+
+`SoilRuntime` is the only OS/ABI boundary. It translates semantic work into
+`KernelRequest`, `AbiPacket`, or adapter requests, then rebuilds low-level
+results into `KernelResult` and `DigitalSetFragment`.
+
+### Evidence Boundary
+
+Asking Star keeps validation modes separate:
+
+- Mock: local logic validation.
+- Replay: historical result replay.
+- Linux user: Linux userspace adapter rehearsal.
+- QEMU dry-run: virtual hardware or boot-path prescreening.
+- StarryOS adapter: StarryOS-facing adapter boundary.
+- BoardReal: real board logs or runner-provided evidence only.
+
+This branch does not treat Mock, Replay, Linux baseline, or QEMU dry-run output
+as BoardReal evidence.
+
+### Current Validation Scope
+
+The current branch validates:
+
+- Asking Star runtime components build independently.
+- The `DigitalSet / Gene / Charge / DigitalCell` path is testable.
+- The runtime-to-Soil adapter path is testable.
+- Mock, LinuxUser, QEMU dry-run, and BoardReal guard paths are distinguishable.
+- Soil remains the only OS/ABI boundary.
+
+The current branch does not claim:
+
+- complete StarryOS-native RKNN / NPU execution;
+- complete camera input integration;
+- complete motor or robotic-arm control;
+- complete robot task closed-loop behavior;
+- local validation replacing upstream CI or self-hosted runner evidence.
+
+### Relationship With Upstream
+
+TGOSKits, StarryOS, ArceOS, and AxVisor each have clear engineering boundaries
+and maintenance rhythms. This branch does not ask upstream maintainers to accept
+the full Asking Star architecture at once.
+
+The goal is to share a componentized implementation so maintainers can review:
+
+- whether the `DigitalSet / Record / View / RefRecord` boundary is clear;
+- whether the runtime component can build and test independently;
+- whether the Soil adapter contract is a useful OS/ABI boundary;
+- whether Mock / dry-run / BoardReal evidence separation is valuable;
+- whether future pieces should be split into smaller upstreamable patches.
+
+### Collaboration Note
+
+Asking Star is an exploratory semantic-runtime direction from the Yi Astra
+team's StarryOS/RK3588 engineering work. We appreciate the upstream work around
+TGOSKits, StarryOS, ArceOS, and AxVisor.
+
+We hope to collaborate in an open and respectful way. If maintainers prefer
+different directory placement, API naming, component boundaries, test layout, or
+documentation scope, we are willing to adjust the branch according to community
+feedback.
+
 
 TGOSKits is an integrated repository for operating system and virtualization development. It uses Git Subtree to manage more than 60 standalone component repositories, bringing ArceOS, StarryOS, Axvisor, and related platform crates into a single workspace for component-level development, cross-system integration, and unified testing.
 

@@ -2,6 +2,8 @@
 
 This is the local TGOSKits scheme-B import of the Asking Star soil boundary.
 
+For the full Asking Star Scheme-B functional layout and evidence boundary, see docs/docs/asking-star/scheme-b-overview.md.
+
 Scope:
 
 - `SoilRuntime` and kernel request/result conversion

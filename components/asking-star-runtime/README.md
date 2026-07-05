@@ -2,6 +2,8 @@
 
 This is the local TGOSKits scheme-B import of the Asking Star runtime core.
 
+For the functional layout and review boundary, see docs/docs/asking-star/scheme-b-overview.md.
+
 Scope:
 
 - `DigitalSet` record/view/ref resolver primitives
