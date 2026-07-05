@@ -11,6 +11,7 @@
 </div>
 
 English | [中文](README_CN.md)
+
 ## Asking Star Scheme-B Runtime Components
 
 ### Project Background
@@ -49,8 +50,10 @@ docs/docs/asking-star/scheme-b-overview.md
 ```
 
 `asking-star-runtime` contains the semantic runtime side: `DigitalSet`, `Gene /
-Charge`, `DigitalCell`, `StarRuntime`, `Sun / Organ`, Walker-related surfaces,
-and trace records.
+Charge`, `DigitalCell`, `StarRuntime`, `Sun / Organ`, Walker-Giant ingress,
+Primordial seed refs, AlgebraSkeleton, TimelineJoint, Star-layer vessel
+transport, MultiChamber runtime, ChamberPouch observation, SkinUI projection,
+ReflexGeneBank, and trace records.
 
 `asking-star-soil` contains the OS/ABI adapter boundary: `KernelRequest`,
 `KernelResult`, `ReturnRebuilder`, Mock / LinuxUser / StarryOS adapter surfaces,
@@ -58,6 +61,50 @@ QEMU dry-run records, and BoardReal guard records.
 
 The tools provide reproducible import and smoke-test entry points for a TGOSKits
 checkout.
+
+### Implemented Architecture Surface
+
+This branch does not only contain a minimal `StarRuntime` facade. It carries the
+core Asking Star V5/V5.5/V5.6 implementation surface that was prepared in the
+Asking Star workspace and then componentized for TGOSKits review.
+
+Important implemented areas include:
+
+- Walker-Giant ingress:
+  `components/asking-star-runtime/include/asking_star/v55/walker_giant_ingress.hpp`
+- Primordial startup seed refs:
+  `components/asking-star-runtime/include/asking_star/v55/primordial_seed_refs.hpp`
+- Main time-axis skeleton and timeline joints:
+  `components/asking-star-runtime/include/asking_star/v55/algebra_skeleton.hpp`
+- Star-layer vessel transport:
+  `components/asking-star-runtime/include/asking_star/v56/vessel/`
+- Application gene/charge builders:
+  `components/asking-star-runtime/include/asking_star/v55/app_gene_charge.hpp`
+- MultiChamber placement and execution records:
+  `components/asking-star-runtime/include/asking_star/v55/chamber_runtime.hpp`
+- ChamberPouch observation, health, fallback, and reflex-candidate surface:
+  `components/asking-star-runtime/include/asking_star/v55/chamber_pouch.hpp`
+- Replay, RKNN, and StarryOS dry-run chamber surfaces:
+  `components/asking-star-runtime/include/asking_star/v55/replay_ai_chamber.hpp`,
+  `components/asking-star-runtime/include/asking_star/v55/rknn_runtime_chamber.hpp`,
+  and `components/asking-star-runtime/include/asking_star/v55/chamber_starryos_dryrun_bridge.hpp`
+- Soil MultiChamber adapter:
+  `components/asking-star-runtime/include/asking_star/v55/soil_multichamber_adapter.hpp`
+- Skin/UI state projection:
+  `components/asking-star-runtime/include/asking_star/v55/skin_ui_projection.hpp`
+- Reflex gene and preset-charge path:
+  `components/asking-star-runtime/include/asking_star/v55/reflex_gene_bank.hpp`
+- V5.5 demo pipeline:
+  `components/asking-star-runtime/include/asking_star/v55/v55_demo_pipeline.hpp`
+
+The matching tests are under
+`components/asking-star-runtime/tests/v55/`,
+`components/asking-star-runtime/tests/unit/v55/`, and
+`components/asking-star-runtime/tests/integration/`. They cover the
+Primordial seed refs, AlgebraSkeleton / TimelineJoint mounting,
+Walker-to-app-intent conversion, app Gene / Charge generation,
+Chamber / Pouch / Reflex / Soil flow, Skin projection, and demo-pipeline
+surfaces.
 
 ### Architecture Overview
 
@@ -74,9 +121,14 @@ The intended flow is:
 ```text
 App / Intent
   -> DigitalSetRecord / DigitalSetFragment
+  -> WalkerIngress / SkinUIProjection
+  -> PrimordialDigitalSet seed refs
   -> StarRuntime / Gene / Charge / DigitalCell
+  -> AlgebraSkeleton / TimelineJoint
+  -> Star-layer VesselBus transport
   -> Sun admission
-  -> OrganRuntime
+  -> OrganRuntime / MultiChamber placement
+  -> ChamberRuntime / ChamberPouchView
   -> SoilRuntime
   -> KernelAdapter
   -> KernelResult
@@ -85,10 +137,14 @@ App / Intent
 ```
 
 Asking Star Runtime does not replace StarryOS kernel scheduling. It adds a task
-organization, capability selection, and state-feedback layer above the OS. The
-current Scheme-B design uses `DigitalSet` as the fact carrier, `Gene / Charge`
-as semantic representations, `DigitalCell` as the minimum runtime unit, `Sun /
-Organ` as admission and execution organization, `SoilRuntime` as the OS/ABI
+organization, capability selection, chamber selection, state-feedback, and
+evidence-recording layer above the OS. The current Scheme-B implementation uses
+`DigitalSet` as the fact carrier, Primordial seed refs as the startup
+interpretation root, `Gene / Charge` as semantic representations, `DigitalCell`
+as the minimum runtime unit, `AlgebraSkeleton` as the main time-axis skeleton,
+`TimelineJoint` and Star-layer vessels as the record transport path, `Sun /
+Organ` as admission and execution organization, MultiChamber / ChamberPouch as
+execution-environment and observation surfaces, `SoilRuntime` as the OS/ABI
 boundary, and trace records as the return path for validation and replay.
 
 ### Problems Addressed
@@ -125,9 +181,34 @@ task means and how it should become a runtime unit.
 compressed or indexed experience. `Charge` models an executable runtime intent.
 `DigitalCell` combines them into the minimum semantic runtime unit.
 
+`PrimordialDigitalSet` is the startup interpretation root. It carries seed refs
+and startup interpretation metadata without absorbing the full timeline,
+chamber state, pouch state, trace store, scheduling policy, or reflex bank.
+
+`AlgebraSkeleton` is the main time-axis skeleton. `TimelineJoint` mounts
+references for Walker input, app intent, app Gene, app Charge, DigitalCell,
+chamber placement, selected chamber, ChamberPouch, Organ dispatch, Soil
+request, kernel result, trace event, and reflex candidate.
+
+The Star-layer vessel path is implemented under `asking_star/v56/vessel`. It
+models transport, gates, routes, packets, policy, taps, recovery, and blocking
+records for runtime information moving across the Star layer. In design terms,
+this is the "blood vessel" surface: it carries facts and results without
+collapsing them into raw pointers or direct OS calls.
+
 `Sun` and `Organ` separate admission from execution organization. `Sun` handles
 logical rhythm, budget, permission, and admission decisions. `OrganRuntime`
 organizes admitted `DigitalCell` execution without bypassing Soil.
+
+`ChamberRuntime` and `ChamberPlacementPolicy` select execution environments,
+including Mock, Replay, StableStarry, Linux external service, RKNN runtime, and
+dry-run adapter surfaces. `ChamberPouchView` is the care and observation layer:
+it records health, output, fallback, trace-facing data, adapter mode, and
+reflex candidates, but it does not bypass Soil or execute OS calls directly.
+
+`SkinUIProjection` is the readable/input-facing projection layer. It can project
+runtime state and convert UI events into Walker input records, but it does not
+switch chambers, call Soil, or write board evidence by itself.
 
 `SoilRuntime` is the only OS/ABI boundary. It translates semantic work into
 `KernelRequest`, `AbiPacket`, or adapter requests, then rebuilds low-level
@@ -153,6 +234,9 @@ The current branch validates:
 
 - Asking Star runtime components build independently.
 - The `DigitalSet / Gene / Charge / DigitalCell` path is testable.
+- Walker-Giant ingress, Primordial seed refs, AlgebraSkeleton,
+  TimelineJoint, Star-layer vessel, MultiChamber, ChamberPouch, Skin projection,
+  and ReflexGene surfaces are present in component code.
 - The runtime-to-Soil adapter path is testable.
 - Mock, LinuxUser, QEMU dry-run, and BoardReal guard paths are distinguishable.
 - Soil remains the only OS/ABI boundary.
@@ -174,6 +258,8 @@ the full Asking Star architecture at once.
 The goal is to share a componentized implementation so maintainers can review:
 
 - whether the `DigitalSet / Record / View / RefRecord` boundary is clear;
+- whether the Walker / Primordial / Skeleton / Vessel / Chamber / Pouch
+  boundaries are understandable and reviewable;
 - whether the runtime component can build and test independently;
 - whether the Soil adapter contract is a useful OS/ABI boundary;
 - whether Mock / dry-run / BoardReal evidence separation is valuable;

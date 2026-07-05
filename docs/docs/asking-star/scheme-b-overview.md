@@ -41,22 +41,28 @@ Important files include:
 - `walker/walker_runtime.hpp`
 - `walker/walker_input.hpp`
 - `v55/walker_giant_ingress.hpp`
+- `v55/primordial_seed_refs.hpp`
 - `v55/skin_ui_projection.hpp`
 - `v55/algebra_skeleton.hpp`
 - `v55/chamber_runtime.hpp`
 - `v55/chamber_pouch.hpp`
 - `v55/reflex_gene_bank.hpp`
 - `v55/v55_demo_pipeline.hpp`
+- `v56/vessel/`
 
 So the functional boundary is:
 
 ```text
 Walker / Skin / App input
   -> DigitalSetFragment
+  -> PrimordialDigitalSet seed refs
   -> StarRuntime
   -> Gene / Charge / DigitalCell
+  -> AlgebraSkeleton / TimelineJoint
+  -> Star-layer VesselBus
   -> Sun admission
-  -> OrganRuntime
+  -> OrganRuntime / MultiChamber placement
+  -> ChamberRuntime / ChamberPouchView
   -> SoilRuntime
   -> KernelAdapter
   -> KernelResult
@@ -74,7 +80,8 @@ import, those layers map to TGOSKits components as follows.
 | Outer application / Walker surface | `asking-star-runtime/include/asking_star/walker`, `asking-star-runtime/include/asking_star/v55/skin_ui_projection.hpp` | Normalize commands, UI events, app intents, replay inputs, and AI results into runtime-visible records. |
 | Primordial / DigitalSet fact layer | `asking-star-runtime/include/asking_star/digitalset`, `asking-star-runtime/include/asking_star/timeline` | Store facts as records and references. Keep `Record`, `View`, and `RefRecord` separate. |
 | StarRuntime / semantic interpretation | `asking-star-runtime/include/asking_star/gcyy`, `asking-star-runtime/include/asking_star/runtime` | Interpret `DigitalSetFragment` into `Gene`, `Charge`, and `DigitalCell` runtime views. |
-| Sun / Organ execution layer | `asking-star-runtime/include/asking_star/gcyy/sun_orchestrator.hpp`, `asking-star-runtime/include/asking_star/organ` | Admit work by budget/policy and execute admitted semantic work units. |
+| Algebra skeleton / Star vessel layer | `asking-star-runtime/include/asking_star/v55/algebra_skeleton.hpp`, `asking-star-runtime/include/asking_star/v56/vessel` | Mount timeline joints and transport facts/results through Star-layer vessel packets, gates, routes, taps, recovery, and blocking records. |
+| Sun / Organ / Chamber execution layer | `asking-star-runtime/include/asking_star/gcyy/sun_orchestrator.hpp`, `asking-star-runtime/include/asking_star/organ`, `asking-star-runtime/include/asking_star/v55/chamber_runtime.hpp`, `asking-star-runtime/include/asking_star/v55/chamber_pouch.hpp` | Admit work by budget/policy, select execution chambers, observe chamber output through Pouch records, and execute admitted semantic work units. |
 | Soil / OS adapter boundary | `components/asking-star-soil`, `asking-star-runtime/include/asking_star/soil` | Convert runtime work into kernel requests/results. Keep OS/ABI/syscall/driver translation out of `StarRuntime`. |
 
 ## What Asking Star Solves Here
@@ -91,10 +98,11 @@ It specifically addresses these engineering gaps:
    not ordinary object pointers and they do not replace the underlying
    `DigitalSet` record model.
 
-3. Walker-Giant, Skin projection, Chamber, Pouch, ReflexGene, and demo pipeline
-   surfaces are represented as runtime-level structures. They describe how
-   inputs and observations enter the semantic runtime without directly touching
-   the OS boundary.
+3. Walker-Giant, Primordial seed refs, AlgebraSkeleton, TimelineJoint,
+   Star-layer vessels, Skin projection, Chamber, Pouch, ReflexGene, and demo
+   pipeline surfaces are represented as runtime-level structures. They describe
+   how inputs, observations, transport records, and chamber results enter the
+   semantic runtime without directly touching the OS boundary.
 
 4. `SoilRuntime` is the only OS/ABI boundary. `StarRuntime`, `OrganRuntime`, and
    Walker surfaces do not call StarryOS directly.
