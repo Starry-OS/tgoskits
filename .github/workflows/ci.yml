@@ -341,8 +341,6 @@ jobs:
             matrix.use_container
             && (
               startsWith(matrix.command, 'cargo xtask starry test qemu --arch')
-              || startsWith(matrix.command, 'cargo xtask axvisor test qemu --arch')
-              || startsWith(matrix.command, 'cargo xtask arceos test qemu --arch')
               || startsWith(matrix.name, 'Stress starry ')
             )
           )
