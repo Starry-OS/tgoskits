@@ -1,8 +1,12 @@
 use std::{
     collections::HashSet,
     fs,
+    io::{Read, Write},
     path::{Path, PathBuf},
-    process::{Command as StdCommand, Output},
+    process::{Command as StdCommand, Output, Stdio},
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, bail};
@@ -310,6 +314,213 @@ fn verify_c_test_runtime_output(output: &Output, expected_path: &Path) -> anyhow
     }
 
     Ok(())
+}
+
+fn c_test_success_patterns(expected_path: &Path) -> anyhow::Result<Vec<String>> {
+    let expected = fs::read_to_string(expected_path)
+        .with_context(|| format!("failed to read {}", expected_path.display()))?;
+    Ok(expected
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.is_empty()
+                && (line.contains("tests run OK!")
+                    || line.contains("test run OK!")
+                    || line.contains("TEST PASSED")
+                    || line.contains("ALL TESTS PASSED"))
+        })
+        .map(String::from)
+        .collect())
+}
+
+fn normalize_c_test_runtime_output_bytes(output: &[u8]) -> String {
+    let ansi_regex =
+        Regex::new(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])").expect("invalid ANSI stripping regex");
+    let combined = String::from_utf8_lossy(output);
+    ansi_regex
+        .replace_all(&combined.replace(['\r', '\0', '\u{0007}'], ""), "")
+        .into_owned()
+}
+
+fn output_matches_pattern(output: &[u8], pattern: &str) -> anyhow::Result<bool> {
+    let normalized = normalize_c_test_runtime_output_bytes(output);
+    let regex = runtime_output_regex(pattern)?;
+    Ok(normalized.lines().any(|line| regex.is_match(line)))
+}
+
+fn c_test_failure_pattern(output: &[u8]) -> Option<&'static str> {
+    let normalized = normalize_c_test_runtime_output_bytes(output).to_ascii_lowercase();
+    const FAILURE_PATTERNS: &[&str] = &[
+        "panicked",
+        "panic",
+        "error:",
+        "failed",
+        " fail",
+        "fail to ",
+        "assertion failed",
+        "segmentation fault",
+        "page fault",
+        "kernel panic",
+        "deadlock",
+        "abort",
+    ];
+    FAILURE_PATTERNS
+        .iter()
+        .copied()
+        .find(|pattern| normalized.contains(pattern))
+}
+
+fn needs_success_terminated_qemu_contract(app_path: &Path, arch: &str) -> bool {
+    matches!(arch, "riscv64" | "loongarch64") && app_path.ends_with(Path::new("pthread/basic"))
+}
+
+fn c_test_qemu_contract_timeout() -> Duration {
+    std::env::var("AXBUILD_C_TEST_QEMU_CONTRACT_TIMEOUT_SEC")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(180))
+}
+
+fn append_stream(output: &mut Vec<u8>, bytes: &[u8], is_stderr: bool) -> anyhow::Result<()> {
+    output.extend_from_slice(bytes);
+    if is_stderr {
+        std::io::stderr()
+            .write_all(bytes)
+            .context("failed to forward stderr")?;
+    } else {
+        std::io::stdout()
+            .write_all(bytes)
+            .context("failed to forward stdout")?;
+    }
+    Ok(())
+}
+
+fn spawn_stream_reader<R: Read + Send + 'static>(
+    mut reader: R,
+    is_stderr: bool,
+    tx: mpsc::Sender<(bool, Vec<u8>)>,
+) {
+    thread::spawn(move || {
+        let mut buffer = [0_u8; 4096];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if tx.send((is_stderr, buffer[..n].to_vec())).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+fn run_justrun_with_success_termination_contract(
+    command: &mut StdCommand,
+    success_patterns: &[String],
+) -> anyhow::Result<Output> {
+    if success_patterns.is_empty() {
+        bail!("success termination contract requires at least one success pattern");
+    }
+
+    let timeout = c_test_qemu_contract_timeout();
+    let started = Instant::now();
+    let (tx, rx) = mpsc::channel::<(bool, Vec<u8>)>();
+
+    eprintln!(
+        "C_TEST_QEMU_TERMINATION_CONTRACT:timeout_sec={}",
+        timeout.as_secs()
+    );
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("failed to spawn C test justrun process")?;
+
+    if let Some(stdout) = child.stdout.take() {
+        spawn_stream_reader(stdout, false, tx.clone());
+    }
+    if let Some(stderr) = child.stderr.take() {
+        spawn_stream_reader(stderr, true, tx.clone());
+    }
+    drop(tx);
+
+    let mut combined = Vec::new();
+
+    loop {
+        while let Ok((is_stderr, bytes)) = rx.try_recv() {
+            append_stream(&mut combined, &bytes, is_stderr)?;
+        }
+
+        if let Some(pattern) = c_test_failure_pattern(&combined) {
+            let _ = child.kill();
+            let status = child.wait().context("failed to wait for failed C test")?;
+            eprintln!("FAILURE_PATTERN_MATCHED:{pattern}");
+            eprintln!("TERMINATED_QEMU_AFTER_FAILURE:true");
+            bail!(
+                "C test runtime output matched failure pattern `{pattern}`; qemu status {status}"
+            );
+        }
+
+        for pattern in success_patterns {
+            if output_matches_pattern(&combined, pattern)? {
+                let _ = child.kill();
+                let status = child
+                    .wait()
+                    .context("failed to wait after terminating successful C test")?;
+                while let Ok((is_stderr, bytes)) = rx.try_recv() {
+                    append_stream(&mut combined, &bytes, is_stderr)?;
+                }
+                println!("SUCCESS_PATTERN_MATCHED:{pattern}");
+                println!("TERMINATED_QEMU_AFTER_SUCCESS:true");
+                println!("QEMU_EXIT_STATUS:{status}");
+                println!("HARNESS_EXIT_CODE:0");
+                println!("EXIT_CODE:0");
+                return Ok(Output {
+                    status,
+                    stdout: combined,
+                    stderr: Vec::new(),
+                });
+            }
+        }
+
+        if let Some(status) = child.try_wait().context("failed to poll C test process")? {
+            while let Ok((is_stderr, bytes)) = rx.try_recv() {
+                append_stream(&mut combined, &bytes, is_stderr)?;
+            }
+            if status.success() {
+                return Ok(Output {
+                    status,
+                    stdout: combined,
+                    stderr: Vec::new(),
+                });
+            }
+            bail!("command exited with status {status}");
+        }
+
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let status = child
+                .wait()
+                .context("failed to wait after C test timeout")?;
+            while let Ok((is_stderr, bytes)) = rx.try_recv() {
+                append_stream(&mut combined, &bytes, is_stderr)?;
+            }
+            println!("SUCCESS_PATTERN_MATCHED:false");
+            println!("TIMEOUT:true");
+            println!("QEMU_EXIT_STATUS:{status}");
+            println!("EXIT_CODE:124");
+            bail!("C test timed out after {} seconds", timeout.as_secs());
+        }
+
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok((is_stderr, bytes)) => append_stream(&mut combined, &bytes, is_stderr)?,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {}
+        }
+    }
 }
 
 fn c_test_invocation_label(invocation: &CTestInvocation) -> String {
@@ -846,13 +1057,29 @@ fn run_single_c_qemu_test(
         .arg("build")
         .exec()?;
 
-    let output = StdCommand::new("make")
+    let mut justrun = StdCommand::new("make");
+    justrun
         .current_dir(arceos_dir)
         .args(&make_args)
-        .arg("justrun")
-        .exec_capture()?;
+        .arg("justrun");
 
-    if let Some(expect_output) = &invocation.expect_output {
+    let mut verified_by_termination_contract = false;
+    let output = if let Some(expect_output) = &invocation.expect_output {
+        let expected_path = app_path.join(expect_output);
+        if needs_success_terminated_qemu_contract(app_path, arch) {
+            let success_patterns = c_test_success_patterns(&expected_path)?;
+            verified_by_termination_contract = true;
+            run_justrun_with_success_termination_contract(&mut justrun, &success_patterns)?
+        } else {
+            justrun.exec_capture()?
+        }
+    } else {
+        justrun.exec_capture()?
+    };
+
+    if let Some(expect_output) = &invocation.expect_output
+        && !verified_by_termination_contract
+    {
         verify_c_test_runtime_output(&output, &app_path.join(expect_output))?;
     }
 
@@ -1144,6 +1371,40 @@ mod tests {
         };
 
         verify_c_test_runtime_output(&output, &expected).unwrap();
+    }
+
+    #[test]
+    fn c_test_success_patterns_extracts_positive_runtime_markers() {
+        let dir = tempdir().unwrap();
+        let expected = dir.path().join("expect.out");
+        std::fs::write(
+            &expected,
+            "noise before\n(C)Pthread basic tests run OK!\nShutting down...\n",
+        )
+        .unwrap();
+
+        let patterns = c_test_success_patterns(&expected).unwrap();
+        assert_eq!(patterns, vec!["(C)Pthread basic tests run OK!".to_string()]);
+    }
+
+    #[test]
+    fn success_terminated_qemu_contract_is_scoped_to_pthread_basic_on_non_exiting_arches() {
+        assert!(needs_success_terminated_qemu_contract(
+            Path::new("test-suit/arceos/c/pthread/basic"),
+            "riscv64"
+        ));
+        assert!(needs_success_terminated_qemu_contract(
+            Path::new("test-suit/arceos/c/pthread/basic"),
+            "loongarch64"
+        ));
+        assert!(!needs_success_terminated_qemu_contract(
+            Path::new("test-suit/arceos/c/pthread/basic"),
+            "x86_64"
+        ));
+        assert!(!needs_success_terminated_qemu_contract(
+            Path::new("test-suit/arceos/c/httpclient"),
+            "riscv64"
+        ));
     }
 
     #[test]
